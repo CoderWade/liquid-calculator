@@ -1,6 +1,10 @@
 import type { Market, RiskTier } from './types'
 
 const OKX = 'https://www.okx.com'
+// fapi.binance.com 在部分地区（如美国）返回 451；www.binance.com 的同名路径可用，
+// 因此优先用 www 域名，失败再退回官方 API 域名。
+const BN_FAPI = ['https://www.binance.com', 'https://fapi.binance.com']
+const BN_DAPI = ['https://www.binance.com', 'https://dapi.binance.com']
 
 export interface MarketIndex {
   generatedAt: string
@@ -111,14 +115,30 @@ export interface LiveQuote {
   ts: number
 }
 
+/** 依次尝试多个域名，返回首个成功解析的 JSON */
+async function fetchFirstJson(urls: string[]): Promise<unknown | null> {
+  for (const url of urls) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) continue
+      return await res.json()
+    } catch {
+      /* 换下一个 */
+    }
+  }
+  return null
+}
+
 /** 实时价格：Binance 用标记价（强平按标记价触发），OKX 只有最新成交价 */
 export async function fetchQuote(market: Market): Promise<LiveQuote | null> {
   try {
     if (market.exchange === 'binance') {
-      const base = market.group === 'coinm' ? 'https://dapi.binance.com/dapi/v1' : 'https://fapi.binance.com/fapi/v1'
-      const res = await fetch(`${base}/premiumIndex?symbol=${market.id}`)
-      if (!res.ok) return null
-      const json = await res.json()
+      const bases = market.group === 'coinm' ? BN_DAPI : BN_FAPI
+      const path = market.group === 'coinm' ? '/dapi/v1' : '/fapi/v1'
+      const json = (await fetchFirstJson(
+        bases.map((b) => `${b}${path}/premiumIndex?symbol=${market.id}`),
+      )) as { markPrice?: string; indexPrice?: string } | null
+      if (!json) return null
       const price = Number(json.markPrice ?? json.indexPrice)
       return Number.isFinite(price) && price > 0 ? { price, source: 'mark', ts: Date.now() } : null
     }
@@ -136,32 +156,44 @@ export async function fetchQuote(market: Market): Promise<LiveQuote | null> {
 /** 一次拉全部标记价，用于列表里显示当前价 */
 export async function fetchAllMarks(): Promise<Map<string, number>> {
   const out = new Map<string, number>()
-  const jobs = [
-    fetch('https://fapi.binance.com/fapi/v1/premiumIndex')
-      .then((r) => r.json())
-      .then((rows: Array<{ symbol: string; markPrice: string }>) =>
-        rows.forEach((x) => out.set(x.symbol, Number(x.markPrice))),
-      ),
-    fetch('https://dapi.binance.com/dapi/v1/premiumIndex')
-      .then((r) => r.json())
-      .then((rows: Array<{ symbol: string; markPrice: string }>) =>
-        rows.forEach((x) => out.set(x.symbol, Number(x.markPrice))),
-      ),
+
+  const takeMark = (rows: unknown) => {
+    if (!Array.isArray(rows)) return
+    for (const r of rows as Array<{ symbol?: string; markPrice?: string }>) {
+      if (r.symbol && r.markPrice) out.set(r.symbol, Number(r.markPrice))
+    }
+  }
+  const takeLast = (json: unknown) => {
+    const data = (json as { data?: Array<{ instId?: string; last?: string }> } | null)?.data
+    if (!Array.isArray(data)) return
+    for (const r of data) {
+      if (r.instId && r.last) out.set(r.instId, Number(r.last))
+    }
+  }
+
+  // Binance：两个市场各试两个域名，成功即止
+  const fetchBinanceMarks = async (bases: string[], path: string) => {
+    for (const base of bases) {
+      try {
+        const res = await fetch(`${base}${path}/premiumIndex`)
+        if (!res.ok) continue
+        takeMark(await res.json())
+        return
+      } catch {
+        /* 换下一个域名 */
+      }
+    }
+  }
+
+  await Promise.allSettled([
+    fetchBinanceMarks(BN_FAPI, '/fapi/v1'),
+    fetchBinanceMarks(BN_DAPI, '/dapi/v1'),
     fetch(`${OKX}/api/v5/market/tickers?instType=SWAP`)
       .then((r) => r.json())
-      .then((json) =>
-        (json.data ?? []).forEach((x: { instId: string; last: string }) =>
-          out.set(x.instId, Number(x.last)),
-        ),
-      ),
+      .then(takeLast),
     fetch(`${OKX}/api/v5/market/tickers?instType=FUTURES`)
       .then((r) => r.json())
-      .then((json) =>
-        (json.data ?? []).forEach((x: { instId: string; last: string }) =>
-          out.set(x.instId, Number(x.last)),
-        ),
-      ),
-  ]
-  await Promise.allSettled(jobs)
+      .then(takeLast),
+  ])
   return out
 }

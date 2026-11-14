@@ -20,8 +20,10 @@ import { fileURLToPath } from 'node:url'
 const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../public/data')
 const OUT_INDEX = resolve(OUT_DIR, 'markets.json')
 const OUT_TIERS = resolve(OUT_DIR, 'tiers.json')
-const BINANCE_FAPI = 'https://fapi.binance.com'
-const BINANCE_DAPI = 'https://dapi.binance.com'
+// 注意：fapi.binance.com / dapi.binance.com 对美国等地区返回 451，
+// 而 www.binance.com 上的同名路径在美区可用，因此统一走 www 域名。
+const BINANCE_FAPI = 'https://www.binance.com'
+const BINANCE_DAPI = 'https://www.binance.com'
 const BINANCE_WEB = 'https://www.binance.com'
 const OKX = 'https://www.okx.com'
 
