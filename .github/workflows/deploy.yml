@@ -30,6 +30,9 @@ jobs:
       - run: npm run build
 
       - uses: actions/configure-pages@v5
+        with:
+          # 仓库尚未启用 Pages 时，用 GITHUB_TOKEN 自动按 "GitHub Actions" 方式启用
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
