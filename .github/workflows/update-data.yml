@@ -1,0 +1,41 @@
+name: Update market data
+
+on:
+  schedule:
+    # 每天 01:17 UTC（北京时间 09:17），错开整点避免排队
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-data
+  cancel-in-progress: true
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Fetch Binance / OKX market metadata
+        run: node scripts/fetch-markets.mjs
+        env:
+          OKX_TIER_LIMIT: 200
+
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- public/data; then
+            echo "数据无变化，跳过提交"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data
+          git commit -m "chore(data): 更新合约元数据 $(date -u +%Y-%m-%d)"
+          git push

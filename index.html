@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Binance / OKX 永续合约仓位计算器：保证金、收益、收益率、手续费与强平价格，覆盖 USDT、USDC 与币本位市场。"
+    />
+    <title>合约强平计算器 · Binance / OKX</title>
+    <script>
+      // 首帧应用主题，避免闪烁
+      try {
+        var t = localStorage.getItem('lc-theme')
+        document.documentElement.dataset.theme = t === 'dark' ? 'dark' : 'light'
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

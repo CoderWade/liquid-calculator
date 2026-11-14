@@ -1,0 +1,134 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* 设计令牌：RGB 通道，便于 /alpha 修饰符 */
+:root,
+[data-theme='light'] {
+  --bg: 245 246 249;
+  --bg-elev: 250 251 253;
+  --panel: 255 255 255;
+  --panel-2: 248 249 252;
+  --line: 224 228 236;
+  --line-soft: 236 239 245;
+  --fg: 16 21 32;
+  --fg-dim: 55 65 84;
+  --muted: 104 115 137;
+  --faint: 148 158 178;
+  --accent: 61 82 214;
+  --accent-fg: 255 255 255;
+  --accent-soft: 238 241 255;
+  --up: 10 148 96;
+  --up-soft: 232 248 241;
+  --down: 214 58 74;
+  --down-soft: 253 238 240;
+  --warn: 168 108 6;
+  --warn-soft: 255 247 230;
+  --shadow: 16 24 40;
+  --grid: 232 236 244;
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --bg: 9 11 16;
+  --bg-elev: 13 16 23;
+  --panel: 18 21 29;
+  --panel-2: 22 26 35;
+  --line: 38 44 58;
+  --line-soft: 30 35 47;
+  --fg: 234 238 247;
+  --fg-dim: 190 198 214;
+  --muted: 141 152 173;
+  --faint: 111 122 143;
+  --accent: 122 141 255;
+  --accent-fg: 12 15 24;
+  --accent-soft: 28 33 56;
+  --up: 48 209 148;
+  --up-soft: 18 45 37;
+  --down: 255 108 122;
+  --down-soft: 52 25 31;
+  --warn: 246 183 74;
+  --warn-soft: 48 38 18;
+  --shadow: 0 0 0;
+  --grid: 30 35 47;
+  color-scheme: dark;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    overflow-x: hidden;
+    background-color: rgb(var(--bg));
+    color: rgb(var(--fg));
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: rgb(var(--accent) / 0.22);
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent) / 0.6);
+    outline-offset: 1px;
+  }
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--fg) / 0.16);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--fg) / 0.28);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgb(var(--grid)) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--grid)) 1px, transparent 1px);
+  background-size: 44px 44px;
+  background-position: -1px -1px;
+}
+
+@keyframes flash-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.flash-in {
+  animation: flash-in 0.18s ease-out;
+}
