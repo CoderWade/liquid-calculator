@@ -23,10 +23,41 @@ jobs:
         with:
           node-version: 22
 
+      # GitHub 机房 IP 可能被交易所地区限制（Binance 对美国 IP 返回 451）。
+      # 先把连通性打到日志里，抓取失败时能立刻定位是网络还是代码问题。
+      - name: Probe exchange endpoints
+        run: |
+          for u in \
+            https://fapi.binance.com/fapi/v1/ping \
+            https://dapi.binance.com/dapi/v1/ping \
+            https://www.binance.com/bapi/futures/v1/friendly/future/common/brackets \
+            https://www.okx.com/api/v5/public/time; do
+            code=$(curl -s -o /tmp/probe.out -w '%{http_code}' --max-time 20 "$u" || echo '000')
+            echo "$code  $u"
+            head -c 200 /tmp/probe.out || true
+            echo; echo '---'
+          done
+
       - name: Fetch Binance / OKX market metadata
         run: node scripts/fetch-markets.mjs
         env:
           OKX_TIER_LIMIT: 200
+
+      - name: Verify data is fresh and complete
+        run: |
+          node -e '
+            const d = require("./public/data/markets.json");
+            const bySource = {};
+            for (const s of d.sources) bySource[s.name] = s;
+            console.log("合约总数:", d.count, "生成时间:", d.generatedAt);
+            for (const [k, v] of Object.entries(bySource)) {
+              console.log(`  ${k}: ${v.status} (${v.count})`, v.error ? `错误: ${v.error}` : "");
+            }
+            if (d.count < 800) throw new Error("合约数量异常偏少，疑似抓取被地区限制");
+            for (const [k, v] of Object.entries(bySource)) {
+              if (v.status !== "ok") console.log(`::warning::${k} 抓取失败，已沿用上一次快照`);
+            }
+          '
 
       - name: Commit if changed
         run: |
