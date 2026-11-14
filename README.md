@@ -29,10 +29,20 @@ npm run build
 
 抓取来源：
 
-- Binance：`fapi/v1/exchangeInfo`、`dapi/v1/exchangeInfo`、`bapi/futures/.../brackets`（批量拿全市场档位）
+- Binance：`www.binance.com/fapi/v1/exchangeInfo`、`www.binance.com/dapi/v1/exchangeInfo`、`bapi/futures/.../brackets`（批量拿全市场档位）
 - OKX：`/api/v5/public/instruments`、`/api/v5/public/position-tiers`（无批量接口，默认抓成交额前 160 名，其余由前端选中时实时补抓）
 
-`.github/workflows/update-data.yml` 每天 01:17 UTC 跑一次并提交；`.github/workflows/deploy.yml` 在 push 时跑测试 + 构建 + 发布 Pages。
+> **域名说明**：`fapi.binance.com` / `dapi.binance.com` 对美国等地区返回 `451 Unavailable For Legal Reasons`，
+> 而 `www.binance.com` 下的同名路径可用。GitHub Actions 跑在美区机房，因此抓取脚本统一走 `www.binance.com`；
+> 前端实时价则按 `[www.binance.com, fapi/dapi.binance.com]` 顺序降级，任一可用即可刷新。
+
+`.github/workflows/update-data.yml` 每天 01:17 UTC 跑一次并提交（若某家交易所抓取失败，沿用上一次快照并在日志里给出 warning）；
+`.github/workflows/deploy.yml` 在 push 时跑测试 + 构建 + 发布 Pages，并校验 `dist/index.html` 确实引用打包后的 JS。
+
+## 部署（GitHub Pages）
+
+仓库只需设置一次：**Settings → Pages → Build and deployment → Source = `GitHub Actions`**。
+之后 push 到 `main` 会自动构建发布，站点地址为 `https://<user>.github.io/<repo>/`（`base` 自动按仓库名推导）。
 
 ## 计算口径
 
