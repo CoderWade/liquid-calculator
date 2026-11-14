@@ -29,63 +29,18 @@ jobs:
       - run: npm run test
       - run: npm run build
 
-      # Pages 若被启用为「从分支部署（legacy）」，GitHub 会直接发布仓库根目录的
-      # 原始 index.html（引用 /src/main.tsx），线上白屏。这里切成 Actions 构建源。
-      - name: Ensure Pages uses GitHub Actions build source
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # 校验构建产物确实是打好的包，而不是仓库根目录的源码 index.html
+      - name: Verify build output
         run: |
-          API="https://api.github.com/repos/${{ github.repository }}/pages"
-          get_c() { curl -sS -o /tmp/pages.json -w '%{http_code}' \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" "$API"; }
-
-          code=$(get_c)
-          echo "GET pages -> HTTP $code"
-          cat /tmp/pages.json || true
-          echo
-
-          if [ "$code" = "404" ]; then
-            echo "Pages 未启用，交由后面的 configure-pages 处理"
-            exit 0
-          fi
-          if [ "$code" != "200" ]; then
-            echo "::error::读取 Pages 配置失败 HTTP $code"
+          if ! grep -q '/assets/index-.*\.js' dist/index.html; then
+            echo "::error::dist/index.html 未引用打包后的 JS，构建可能失败"
             exit 1
           fi
-
-          build_type=$(tr -d '\n' < /tmp/pages.json | sed -n 's/.*"build_type":"\([^"]*\)".*/\1/p')
-          echo "当前 build_type=${build_type:-<empty>}"
-
-          if [ "$build_type" != "workflow" ]; then
-            code=$(curl -sS -o /tmp/put.json -w '%{http_code}' -X PUT \
-              -H "Authorization: Bearer $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              -H "Content-Type: application/json" \
-              -d '{"build_type":"workflow"}' "$API")
-            echo "PUT build_type=workflow -> HTTP $code"
-            cat /tmp/put.json || true
-            echo
-            if [ "$code" != "204" ] && [ "$code" != "200" ]; then
-              echo "::error::切换 Pages 构建源失败（HTTP $code），请在 Settings → Pages → Source 选择 GitHub Actions"
-              exit 1
-            fi
-          fi
-
-          code=$(get_c)
-          build_type=$(tr -d '\n' < /tmp/pages.json | sed -n 's/.*"build_type":"\([^"]*\)".*/\1/p')
-          echo "切换后 build_type=${build_type:-<empty>} (HTTP $code)"
-          if [ "$build_type" != "workflow" ]; then
-            echo "::error::Pages 仍非 Actions 构建源，请在 Settings → Pages → Source 选择 GitHub Actions"
-            exit 1
-          fi
+          test -f dist/data/markets.json || { echo "::error::缺少 dist/data/markets.json"; exit 1; }
+          echo "构建产物检查通过："
+          ls -la dist dist/data
 
       - uses: actions/configure-pages@v5
-        with:
-          # 仓库尚未启用 Pages 时，用 GITHUB_TOKEN 自动按 "GitHub Actions" 方式启用
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
