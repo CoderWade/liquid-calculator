@@ -29,30 +29,26 @@ jobs:
       - run: npm run test
       - run: npm run build
 
-      # 若 Pages 曾被启用为「从分支部署」，先切成 Actions 构建源，否则会发布仓库里的
-      # 原始 index.html（引用 /src/main.tsx），线上白屏。已正确配置时该步是幂等的。
+      # Pages 若被启用为「从分支部署（legacy）」，GitHub 会直接发布仓库根目录的
+      # 原始 index.html（引用 /src/main.tsx），线上白屏。这里切成 Actions 构建源。
       - name: Ensure Pages builds from GitHub Actions
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          STATUS=$(curl -s -o /tmp/pages.json -w '%{http_code}' \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/pages")
-          if [ "$STATUS" = "404" ]; then
-            echo "Pages 尚未启用，交由 configure-pages 处理"
-          else
-            BUILD_TYPE=$(python3 -c "import json;print(json.load(open('/tmp/pages.json')).get('build_type',''))")
-            echo "当前 build_type=$BUILD_TYPE"
-            if [ "$BUILD_TYPE" != "workflow" ]; then
-              curl -s -X PUT \
-                -H "Authorization: Bearer $GH_TOKEN" \
-                -H "Accept: application/vnd.github+json" \
-                -H "Content-Type: application/json" \
-                -d '{"build_type":"workflow"}' \
-                "https://api.github.com/repos/${{ github.repository }}/pages"
-              echo "已切换为 GitHub Actions 构建"
-            fi
+          set -x
+          gh api "repos/${{ github.repository }}/pages" --jq '.build_type, .status' || true
+          BUILD_TYPE=$(gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null || echo '')
+          echo "build_type=${BUILD_TYPE:-<none>}"
+          if [ -n "$BUILD_TYPE" ] && [ "$BUILD_TYPE" != "workflow" ]; then
+            echo '{"build_type":"workflow"}' \
+              | gh api -X PUT "repos/${{ github.repository }}/pages" --input - > /tmp/put.json
+            echo "PUT 结果："
+            cat /tmp/put.json
+          fi
+          FINAL=$(gh api "repos/${{ github.repository }}/pages" --jq '.build_type' 2>/dev/null || echo '')
+          echo "切换后 build_type=${FINAL:-<none>}"
+          if [ "$FINAL" != "workflow" ]; then
+            echo "::error::Pages 仍不是 Actions 构建源（${FINAL:-unknown}），请在 Settings → Pages → Source 选择 GitHub Actions"
           fi
 
       - uses: actions/configure-pages@v5
