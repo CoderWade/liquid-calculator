@@ -158,7 +158,7 @@ describe('Binance USDT 线性', () => {
     expect(big.effectiveMaxLeverage).toBe(100)
   })
 
-  it('1x 多单强平价极低（不会归零前安全）', () => {
+  it('1x 多单强平价极低但仍可算出（不应报「不会强平」）', () => {
     const res = compute({
       market: m,
       side: 'long',
@@ -170,9 +170,54 @@ describe('Binance USDT 线性', () => {
       makerFee: m.makerFee,
       takerFee: m.takerFee,
     })
-    // 1x 几乎不会爆仓，但价格接近归零时维持保证金趋零、手续费仍会拖穿权益
+    // 开仓手续费 3 USDT 会把权益拖到维持保证金之下，强平价约 32.8
+    expect(res.liqStatus).toBe('ok')
     expect(res.liqPrice).toBeGreaterThan(0)
     expect(res.liqPrice / 60000).toBeLessThan(0.01)
+  })
+
+  it('低价币 1x：强平价低于最小报价单位时仍必须给出数值', () => {
+    // 回归：曾把求解下界写成 priceTick，导致 ADA/TRUMP 这类低价币 1× 多单显示「无强平价」
+    const low = market({
+      id: 'ADAUSDT',
+      base: 'ADA',
+      priceTick: 0.0001,
+      tiers: [tier(0, 10000, 0.005, 0, 75)],
+    })
+    const res = compute({
+      market: low,
+      side: 'long',
+      leverage: 1,
+      entryPrice: 0.1558,
+      exitPrice: 0.1558,
+      qty: 1,
+      feeMode: 'taker',
+      makerFee: m.makerFee,
+      takerFee: m.takerFee,
+    })
+    expect(res.liqStatus).toBe('ok')
+    expect(res.liqPrice).toBeGreaterThan(0)
+    // 解析解：开仓费 0.1558×0.0005 ÷ (1 − 0.005) ≈ 0.0000783
+    expect(res.liqPrice).toBeCloseTo(0.0000783, 6)
+    expect(res.liqPrice).toBeLessThan(low.priceTick)
+  })
+
+  it('缺档位时不谎报「归零前不会强平」', () => {
+    const noTiers = market({ id: 'X', tiers: [] })
+    const res = compute({
+      market: noTiers,
+      side: 'long',
+      leverage: 1,
+      entryPrice: 100,
+      exitPrice: 100,
+      qty: 1,
+      feeMode: 'taker',
+      makerFee: 0.0002,
+      takerFee: 0.0005,
+    })
+    expect(res.liqStatus).toBe('no-tiers')
+    expect(res.noLiquidation).toBe(false)
+    expect(res.warnings.some((w) => w.includes('缺少风险档位'))).toBe(true)
   })
 })
 

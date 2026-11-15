@@ -65,7 +65,8 @@ export function LiqChart({ result, market, side, entry, exit }: Props) {
       baseY: y(0),
       entryX: x(entry),
       exitX: x(exit),
-      liqX: result.noLiquidation || !result.liqPrice ? null : x(result.liqPrice),
+      liqX:
+        result.liqStatus !== 'ok' || !(result.liqPrice > 0) ? null : x(result.liqPrice),
       plotLeft: PAD_L,
       plotRight: W - PAD_R,
     }
@@ -75,7 +76,12 @@ export function LiqChart({ result, market, side, entry, exit }: Props) {
 
   const { x, y, xMin, xMax, equityPath, mmPath, baseY, entryX, exitX, liqX, plotLeft, plotRight } =
     geo
-  const liqLabel = result.noLiquidation ? '无强平价' : fmtPrice(result.liqPrice)
+  const liqLabel =
+    result.liqStatus === 'ok'
+      ? fmtPrice(result.liqPrice)
+      : result.liqStatus === 'safe-to-zero'
+        ? '归零前不强平'
+        : '缺档位数据'
   const profit = result.pnlNet >= 0
   const lineColor = profit ? 'rgb(var(--up))' : 'rgb(var(--down))'
 

@@ -97,8 +97,10 @@ export interface CalcResult {
   roiNet: number
   fees: FeeBreakdown
   liqPrice: number
-  /** 价格归零前不会强平（如 1× 多单） */
+  /** 价格归零前不会强平（如 1× 多单且手续费不足以击穿权益） */
   noLiquidation: boolean
+  /** ok=有强平价；safe-to-zero=归零前不会强平；no-tiers=缺档位无法计算 */
+  liqStatus: 'ok' | 'safe-to-zero' | 'no-tiers'
   /** 强平价相对开仓价的距离，带方向 */
   liqDistancePct: number
   breakEven: number

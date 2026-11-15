@@ -124,45 +124,49 @@ function solveLiqPrice(
   qty: number,
   entry: number,
   marginCoin: number,
-): { price: number; noLiquidation: boolean } {
+): { price: number; status: 'ok' | 'safe-to-zero' | 'no-tiers' } {
   const tiers = market.tiers
-  if (!tiers.length || qty <= 0) return { price: 0, noLiquidation: true }
+  if (!tiers.length) return { price: 0, status: 'no-tiers' }
+  if (qty <= 0) return { price: 0, status: 'no-tiers' }
 
   const f = (p: number) =>
     equityAt(market, side, qty, entry, p, marginCoin) - maintenanceMargin(tiers, market, qty, p)
 
-  const minPrice = Math.max(market.priceTick, entry * 1e-8)
+  // 强平价是理论价格，不受最小报价单位约束：1× 多单的强平价常低于 priceTick
+  // （如 ADA 1× 约 0.000078 < tick 0.0001），所以下界必须取远小于 tick 的值。
+  const minPrice = Math.max(entry * 1e-10, 1e-18)
 
   if (side === 'long') {
-    if (f(entry) <= 0) return { price: entry, noLiquidation: false }
-    if (f(minPrice) > 0) return { price: 0, noLiquidation: true }
+    if (f(entry) <= 0) return { price: entry, status: 'ok' }
+    // 价格趋近 0 仍然安全（1× 零手续费多单）：真正不会强平
+    if (f(minPrice) > 0) return { price: 0, status: 'safe-to-zero' }
     let lo = minPrice
     let hi = entry
     for (let i = 0; i < 240; i++) {
       const mid = (lo + hi) / 2
       if (f(mid) > 0) hi = mid
       else lo = mid
-      if (hi - lo < Math.max(entry * 1e-10, 1e-14)) break
+      if (hi - lo < Math.max(entry * 1e-12, 1e-18)) break
     }
-    return { price: (lo + hi) / 2, noLiquidation: false }
+    return { price: (lo + hi) / 2, status: 'ok' }
   }
 
-  if (f(entry) <= 0) return { price: entry, noLiquidation: false }
+  if (f(entry) <= 0) return { price: entry, status: 'ok' }
   let lo = entry
   let hi = entry * 1.1 + market.priceTick
   let guard = 0
   while (f(hi) > 0) {
     lo = hi
     hi *= 1.6
-    if (guard++ > 400 || !Number.isFinite(hi)) return { price: 0, noLiquidation: true }
+    if (guard++ > 400 || !Number.isFinite(hi)) return { price: 0, status: 'safe-to-zero' }
   }
   for (let i = 0; i < 240; i++) {
     const mid = (lo + hi) / 2
     if (f(mid) > 0) lo = mid
     else hi = mid
-    if (hi - lo < Math.max(entry * 1e-10, 1e-14)) break
+    if (hi - lo < Math.max(entry * 1e-12, 1e-18)) break
   }
-  return { price: (lo + hi) / 2, noLiquidation: false }
+  return { price: (lo + hi) / 2, status: 'ok' }
 }
 
 /** 保本价：净盈亏（含双边手续费）= 0 的价格 */
@@ -248,12 +252,14 @@ export function compute(input: CalcInput): CalcResult {
 
   // 强平：开仓手续费同样占用权益
   const marginCoin = margin - openFee
-  const { price: liqPrice, noLiquidation } = solveLiqPrice(market, side, qty, entry, marginCoin)
-  const liqDistancePct = noLiquidation || !liqPrice ? 0 : (liqPrice - entry) / entry
+  const liq = solveLiqPrice(market, side, qty, entry, marginCoin)
+  const liqPrice = liq.price
+  const hasLiq = liq.status === 'ok' && liqPrice > 0
+  const liqDistancePct = hasLiq ? (liqPrice - entry) / entry : 0
 
   const breakEven = solveBreakEven(market, side, qty, entry, pickRate)
   const mm = maintenanceMargin(tiers, market, qty, entry)
-  const liqFee = liqPrice ? feeAmount(market, qty, liqPrice, market.liquidationFee ?? 0) : 0
+  const liqFee = hasLiq ? feeAmount(market, qty, liqPrice, market.liquidationFee ?? 0) : 0
   const effectiveMaxLeverage = tier?.maxLeverage ?? market.maxLeverage
 
   if (qty <= 0) warnings.push('开仓数量需大于 0')
@@ -267,6 +273,13 @@ export function compute(input: CalcInput): CalcResult {
     warnings.push(`当前名义价值处于第 ${index + 1} 档，最高只能开 ${tier.maxLeverage}×`)
   if (market.maxLeverage > 0 && leverage > market.maxLeverage)
     warnings.push(`超过该合约最高杠杆 ${market.maxLeverage}×`)
+  if (liq.status === 'no-tiers' && qty > 0)
+    warnings.push('缺少风险档位数据，无法计算强平价格（维持保证金率未知）')
+  // 理论强平价低于最小报价单位：数学上有解，但交易所价格不可能走到那里
+  if (hasLiq && market.priceTick > 0 && liqPrice < market.priceTick && qty > 0)
+    warnings.push(
+      `理论强平价 ${fmtCompact(liqPrice)} 低于该合约最小报价单位 ${market.priceTick}，实际几乎不可能被强平`,
+    )
   if (qty > 0 && tiers.length && marginCoin <= mm)
     warnings.push('保证金不足以覆盖维持保证金，开仓即触发强平')
   if (leverage >= 50) warnings.push('高杠杆下强平价对标记价格波动极其敏感，实际以标记价格触发')
@@ -279,7 +292,7 @@ export function compute(input: CalcInput): CalcResult {
   const hi = entry * (1 + spanUp)
   const prices: number[] = []
   for (let i = 0; i <= N; i++) prices.push(lo + ((hi - lo) * i) / N)
-  if (liqPrice && !noLiquidation) prices.push(liqPrice)
+  if (hasLiq) prices.push(liqPrice)
   prices.sort((a, b) => a - b)
   const curve = prices.map((price) => ({
     price,
@@ -312,7 +325,9 @@ export function compute(input: CalcInput): CalcResult {
     roiNet: margin > 0 ? pnlNet / margin : 0,
     fees,
     liqPrice,
-    noLiquidation,
+    // 仅当「价格趋近 0 仍安全」时才为 true；缺少档位时是 no-tiers，由 UI 单独提示
+    noLiquidation: liq.status === 'safe-to-zero',
+    liqStatus: liq.status,
     liqDistancePct,
     breakEven,
     mmr: tier?.mmr ?? 0,

@@ -41,14 +41,19 @@ export function KpiStrip({ result, market, entry, leverage }: Props) {
           {leverage}× · 名义 {fmtMoney(result.notional)} USD
         </span>
       </Cell>
-      <Cell label="强平价格" accent={result.noLiquidation ? undefined : 'down'}>
+      <Cell
+        label="强平价格"
+        accent={result.liqStatus === 'ok' ? 'down' : result.liqStatus === 'no-tiers' ? 'warn' : undefined}
+      >
         <span className="tabular text-[17px] font-semibold leading-none">
-          {result.noLiquidation ? '—' : fmtPrice(result.liqPrice)}
+          {result.liqStatus === 'ok' ? fmtPrice(result.liqPrice) : '—'}
         </span>
         <span className="tabular mt-1 block text-[10px] text-[rgb(var(--faint))]">
-          {result.noLiquidation
-            ? '价格归零前不会强平'
-            : `距开仓 ${fmtPct(Math.abs(result.liqDistancePct), 2)} ${result.liqDistancePct < 0 ? '下方' : '上方'}`}
+          {result.liqStatus === 'ok'
+            ? `距开仓 ${fmtPct(Math.abs(result.liqDistancePct), 2)} ${result.liqDistancePct < 0 ? '下方' : '上方'}`
+            : result.liqStatus === 'safe-to-zero'
+              ? '价格归零前不会强平'
+              : '缺风险档位，无法计算'}
         </span>
       </Cell>
       <Cell label="开仓数量">
@@ -146,7 +151,7 @@ function Cell({
 }: {
   label: string
   children: React.ReactNode
-  accent?: 'up' | 'down'
+  accent?: 'up' | 'down' | 'warn'
   span?: 1 | 2
 }) {
   const color =
@@ -154,7 +159,9 @@ function Cell({
       ? 'text-[rgb(var(--up))]'
       : accent === 'down'
         ? 'text-[rgb(var(--down))]'
-        : 'text-[rgb(var(--fg))]'
+        : accent === 'warn'
+          ? 'text-[rgb(var(--warn))]'
+          : 'text-[rgb(var(--fg))]'
   return (
     <div
       className={[
