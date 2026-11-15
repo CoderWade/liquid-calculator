@@ -278,7 +278,7 @@ export function compute(input: CalcInput): CalcResult {
   // 理论强平价低于最小报价单位：数学上有解，但交易所价格不可能走到那里
   if (hasLiq && market.priceTick > 0 && liqPrice < market.priceTick && qty > 0)
     warnings.push(
-      `理论强平价 ${fmtCompact(liqPrice)} 低于该合约最小报价单位 ${market.priceTick}，实际几乎不可能被强平`,
+      `理论强平价 ${liqPrice.toPrecision(4)} 低于该合约最小报价单位 ${market.priceTick}，实际几乎不可能被强平`,
     )
   if (qty > 0 && tiers.length && marginCoin <= mm)
     warnings.push('保证金不足以覆盖维持保证金，开仓即触发强平')
